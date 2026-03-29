@@ -1,0 +1,242 @@
+checkProperty("minecraft_version")
+checkProperty("mod_version")
+checkProperty("mod_id")
+
+ext.minecraft_version = getOrDefault("minecraft_version")
+ext.mod_version = getOrDefault("mod_version")
+ext.mod_id = getOrDefault("mod_id")
+ext.mod_name = getOrDefault("mod_name", modIdToName(ext.mod_id))
+ext.mod_description = getOrDefault("mod_description", "")
+ext.license = getOrDefault("license", "MIT")
+ext.loader = getOrDefault("loader", "fabric")
+ext.maven_group = getOrDefault("maven_group", "com.kimiram")
+ext.included_projects = getOrDefault("included_projects", [], it -> parseStringToList(it))
+ext.username = getOrDefault("username", "Kimiram")
+
+ext.included_projects.forEach {
+    def p = findProject(it)
+    if (p == null) {
+        throw new RuntimeException("Project ${it} does not exist")
+    }
+}
+
+ext.included_projects.forEach {
+    evaluationDependsOn(it)
+}
+
+apply plugin: "idea"
+
+idea {
+    module {
+        downloadJavadoc = true
+        downloadSources = true
+    }
+}
+
+version = "${ext.mod_version}+${ext.minecraft_version}"
+group = ext.maven_group
+
+base {
+    archivesName = "${mod_id}-${loader}"
+}
+
+if (ext.loader == "fabric") {
+    checkPlugin("net.fabricmc.fabric-loom")
+
+    checkProperty("fabric_loader_version")
+    ext.fabric_loader_version = getOrDefault("fabric_loader_version")
+
+    if (hasProperty("fabric_api_version")) {
+        ext.fabric_api_version = getOrDefault("fabric_api_version")
+    }
+}
+
+if (ext.loader == "neoforge") {
+    checkPlugin("net.neoforged.gradle.userdev")
+
+    checkProperty("neoforge_version")
+    ext.neoforge_version = getOrDefault("neoforge_version")
+
+    java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+}
+
+dependencies {
+    included_projects.forEach {
+        implementation(project(it)) {
+            transitive false
+        }
+    }
+
+    if (loader == "fabric") {
+        minecraft "com.mojang:minecraft:${minecraft_version}"
+
+        implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+
+        if (project.hasProperty("fabric_api_version")) {
+            implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+        }
+    }
+
+    if (loader == "neoforge") {
+        implementation "net.neoforged:neoforge:${neoforge_version}"
+    }
+}
+
+processResources {
+    included_projects.forEach({
+        from("${project(it).projectDir}/src/main/resources")
+    })
+
+    if (loader == "fabric") {
+        filesMatching("fabric.mod.json") {
+            expand "mod_id": mod_id,
+                    "mod_version": "${mod_version}+${minecraft_version}",
+                    "mod_name": mod_name,
+                    "mod_description": mod_description,
+                    "license": license,
+                    "minecraft_version": minecraft_version
+        }
+    }
+
+    if (loader == "neoforge") {
+        filesMatching("META-INF/neoforge.mods.toml") {
+            expand  "mod_id"            : mod_id,
+                    "mod_version"       : mod_version,
+                    "mod_name"          : mod_name,
+                    "mod_description"   : mod_description,
+                    "license"           : license,
+                    "minecraft_version" : minecraft_version
+        }
+    }
+}
+
+task deleteResources {
+    project.delete "build/resources"
+}
+processResources.dependsOn deleteResources
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 25
+
+    if (loader != "neoforge") {
+        included_projects.forEach({
+            source(project(it).sourceSets.main.allSource)
+        })
+    }
+}
+
+if (loader == "neoforge") {
+    tasks.withType(JavaCompile).matching(it -> !it.name.startsWith("neo")).configureEach {
+        included_projects.forEach({
+            source(project(it).sourceSets.main.allSource)
+        })
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+    inputs.property "archivesName", project.base.archivesName
+}
+
+if (ext.loader == "fabric") {
+    loom {
+        runs {
+            client {
+                programArg "--username=${username}${new Random().nextInt(1000)}"
+
+                environment "client"
+
+                runDir "run/client"
+
+                client()
+            }
+
+            server {
+                environment "server"
+
+                runDir "run/server"
+
+                server()
+            }
+        }
+    }
+}
+
+if (ext.loader == "neoforge") {
+    runs {
+        configureEach {
+            systemProperty 'forge.logging.console.level', 'debug'
+
+            modSource project.sourceSets.main
+        }
+
+        client {
+            client()
+
+            programArguments "--username=${username}${new Random().nextInt(1000)}"
+
+            workingDirectory "run/client"
+        }
+
+        server {
+            server()
+
+            programArguments "--nogui"
+
+            workingDirectory "run/server"
+        }
+    }
+}
+
+def checkPlugin(String name) {
+    if (!getPluginManager().hasPlugin(name)) {
+        throw new RuntimeException("Missing plugin ${name}")
+    }
+}
+
+def checkProperty(String name) {
+    if (!hasProperty(name)) {
+        throw new RuntimeException("Missing property ${name}")
+    }
+}
+
+def <T> T getOrDefault(String name, T defaultValue = null, Closure parser = { it }) {
+    if (hasProperty(name)) {
+        return parser(getProperty(name))
+    }
+    return defaultValue
+}
+
+static def parseStringToList(String s) {
+    if (s == null) {
+        return []
+    }
+    return s.split(',').collect({ it.trim() })
+}
+
+static String modIdToName(String id) {
+    boolean change = true
+    String name = ""
+    for (int i = 0; i < id.length(); i++) {
+        if (Character.isLetter(id.charAt(i))) {
+            if (change) {
+                name += Character.toUpperCase(id.charAt(i))
+                change = false
+            } else {
+                name += id.charAt(i)
+            }
+        } else {
+            if (id.charAt(i) == '_') {
+                name += " "
+                change = true
+            } else {
+                name += id.charAt(i)
+            }
+        }
+    }
+    return name
+}
