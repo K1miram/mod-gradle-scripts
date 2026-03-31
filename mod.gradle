@@ -24,6 +24,7 @@ ext.included_projects.forEach {
     evaluationDependsOn(it)
 }
 
+apply plugin: "java"
 apply plugin: "idea"
 
 idea {
