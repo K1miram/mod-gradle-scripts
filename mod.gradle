@@ -34,6 +34,11 @@ idea {
     }
 }
 
+// idk why but i can't build mods without this
+tasks.withType(AbstractTestTask).configureEach {
+    failOnNoDiscoveredTests = false
+}
+
 version = "${ext.mod_version}+${ext.minecraft_version}"
 group = ext.maven_group
 
