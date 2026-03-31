@@ -111,7 +111,7 @@ processResources {
     }
 }
 
-task deleteResources {
+tasks.register('deleteResources') {
     project.delete "build/resources"
 }
 processResources.dependsOn deleteResources
