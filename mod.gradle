@@ -2,12 +2,14 @@ checkProperty("minecraft_version")
 checkProperty("mod_version")
 checkProperty("mod_id")
 
+ext.java_version = getOrDefault("java_version", 25) as int
 ext.minecraft_version = getOrDefault("minecraft_version")
 ext.mod_version = getOrDefault("mod_version")
 ext.mod_id = getOrDefault("mod_id")
 ext.mod_name = getOrDefault("mod_name", modIdToName(ext.mod_id))
 ext.mod_description = getOrDefault("mod_description", "")
 ext.license = getOrDefault("license", "MIT")
+ext.mappings = getOrDefault("mappings", "none")
 ext.loader = getOrDefault("loader", "fabric")
 ext.maven_group = getOrDefault("maven_group", "com.kimiram")
 ext.included_projects = getOrDefault("included_projects", [], it -> parseStringToList(it))
@@ -43,11 +45,20 @@ version = "${ext.mod_version}+${ext.minecraft_version}"
 group = ext.maven_group
 
 base {
-    archivesName = "${mod_id}-${loader}"
+    archivesName = "${mod_id.replace('_', '-')}-${loader}"
 }
 
 if (ext.loader == "fabric") {
-    checkPlugin("net.fabricmc.fabric-loom")
+    if (mappings == "none") {
+        checkPlugin("net.fabricmc.fabric-loom")
+    } else {
+        checkPlugin("net.fabricmc.fabric-loom-remap")
+
+        if (mappings == "parchment") {
+            checkProperty("parchment_version")
+            ext.parchment_version = getOrDefault("parchment_version")
+        }
+    }
 
     checkProperty("fabric_loader_version")
     ext.fabric_loader_version = getOrDefault("fabric_loader_version")
@@ -63,7 +74,16 @@ if (ext.loader == "neoforge") {
     checkProperty("neoforge_version")
     ext.neoforge_version = getOrDefault("neoforge_version")
 
-    java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+    java.toolchain.languageVersion = JavaLanguageVersion.of(ext.java_version)
+}
+
+repositories {
+    if (loader == "fabric" && mappings == "parchment") {
+        maven {
+            name = 'ParchmentMC'
+            url = 'https://maven.parchmentmc.org'
+        }
+    }
 }
 
 dependencies {
@@ -76,10 +96,27 @@ dependencies {
     if (loader == "fabric") {
         minecraft "com.mojang:minecraft:${minecraft_version}"
 
-        implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+        if (mappings == "none") {
+            implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
 
-        if (project.hasProperty("fabric_api_version")) {
-            implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+            if (project.hasProperty("fabric_api_version")) {
+                implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+            }
+        } else {
+            modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+
+            if (mappings == "parchment") {
+                mappings loom.layered() {
+                    officialMojangMappings()
+                    parchment("org.parchmentmc.data:parchment-${minecraft_version}:${parchment_version}@zip")
+                }
+            } else {
+                mappings loom.officialMojangMappings()
+            }
+
+            if (project.hasProperty("fabric_api_version")) {
+                modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+            }
         }
     }
 
@@ -122,7 +159,7 @@ tasks.register('deleteResources') {
 processResources.dependsOn deleteResources
 
 tasks.withType(JavaCompile).configureEach {
-    it.options.release = 25
+    it.options.release = java_version
 
     if (loader != "neoforge") {
         included_projects.forEach({
@@ -140,8 +177,8 @@ if (loader == "neoforge") {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
+    sourceCompatibility = JavaLanguageVersion.of(java_version)
+    targetCompatibility = JavaLanguageVersion.of(java_version)
 }
 
 jar {
