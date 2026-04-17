@@ -88,8 +88,14 @@ repositories {
 
 dependencies {
     included_projects.forEach {
-        implementation(project(it)) {
-            transitive false
+        if (project(it).getConfigurations().findByName('namedElements') != null) {
+            implementation(project(path: it, configuration: "namedElements")) {
+                transitive false
+            }
+        } else {
+            implementation(project(it)) {
+                transitive false
+            }
         }
     }
 
