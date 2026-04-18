@@ -89,11 +89,11 @@ repositories {
 dependencies {
     included_projects.forEach {
         if (project(it).getConfigurations().findByName('namedElements') != null) {
-            compileOnly(project(path: it, configuration: "namedElements")) {
+            implementation(project(path: it, configuration: "namedElements")) {
                 transitive false
             }
         } else {
-            compileOnly(project(it)) {
+            implementation(project(it)) {
                 transitive false
             }
         }
