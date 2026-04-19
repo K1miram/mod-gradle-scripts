@@ -226,7 +226,7 @@ if (ext.loader == "neoforge") {
         client {
             client()
 
-            programArguments "--username=${username}${new Random().nextInt(1000)}"
+            programArgument "--username=${username}${new Random().nextInt(1000)}"
 
             workingDirectory "run/client"
         }
@@ -234,7 +234,7 @@ if (ext.loader == "neoforge") {
         server {
             server()
 
-            programArguments "--nogui"
+            programArgument "--nogui"
 
             workingDirectory "run/server"
         }
