@@ -48,6 +48,19 @@ base {
     archivesName = "${mod_id.replace('_', '-')}-${loader}"
 }
 
+java {
+    sourceCompatibility = JavaLanguageVersion.of(java_version)
+    targetCompatibility = JavaLanguageVersion.of(java_version)
+}
+
+jar {
+    inputs.property "archivesName", project.base.archivesName
+}
+
+
+// LOADER SPECIFIC VARIABLES
+
+
 if (ext.loader == "fabric") {
     if (mappings == "none") {
         checkPlugin("net.fabricmc.fabric-loom")
@@ -77,12 +90,28 @@ if (ext.loader == "neoforge") {
     java.toolchain.languageVersion = JavaLanguageVersion.of(ext.java_version)
 }
 
+if (ext.loader == "spigot") {
+    checkProperty("spigot_version")
+
+    ext.spigot_version = getOrDefault("spigot_version")
+}
+
+
+// DEPENDENCIES CONFIGURATION
+
+
 repositories {
+    mavenCentral()
+
     if (loader == "fabric" && mappings == "parchment") {
         maven {
             name = 'ParchmentMC'
             url = 'https://maven.parchmentmc.org'
         }
+    }
+
+    if (loader == "spigot") {
+        maven { url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
     }
 }
 
@@ -129,67 +158,15 @@ dependencies {
     if (loader == "neoforge") {
         implementation "net.neoforged:neoforge:${neoforge_version}"
     }
-}
 
-processResources {
-    included_projects.forEach({
-        from("${project(it).projectDir}/src/main/resources")
-    })
-
-    if (loader == "fabric") {
-        filesMatching("fabric.mod.json") {
-            expand "mod_id": mod_id,
-                    "mod_version": "${mod_version}+${minecraft_version}",
-                    "mod_name": mod_name,
-                    "mod_description": mod_description,
-                    "license": license,
-                    "minecraft_version": minecraft_version
-        }
-    }
-
-    if (loader == "neoforge") {
-        filesMatching("META-INF/neoforge.mods.toml") {
-            expand  "mod_id"            : mod_id,
-                    "mod_version"       : mod_version,
-                    "mod_name"          : mod_name,
-                    "mod_description"   : mod_description,
-                    "license"           : license,
-                    "minecraft_version" : minecraft_version
-        }
+    if (loader == "spigot") {
+        compileOnly "org.spigotmc:spigot-api:${spigot_version}"
     }
 }
 
-tasks.register('deleteResources') {
-    project.delete "build/resources"
-}
-processResources.dependsOn deleteResources
 
-tasks.withType(JavaCompile).configureEach {
-    it.options.release = java_version
+// RUN CONFIGURATION
 
-    if (loader != "neoforge") {
-        included_projects.forEach({
-            source(project(it).sourceSets.main.allSource)
-        })
-    }
-}
-
-if (loader == "neoforge") {
-    tasks.withType(JavaCompile).matching(it -> !it.name.startsWith("neo")).configureEach {
-        included_projects.forEach({
-            source(project(it).sourceSets.main.allSource)
-        })
-    }
-}
-
-java {
-    sourceCompatibility = JavaLanguageVersion.of(java_version)
-    targetCompatibility = JavaLanguageVersion.of(java_version)
-}
-
-jar {
-    inputs.property "archivesName", project.base.archivesName
-}
 
 if (ext.loader == "fabric") {
     loom {
@@ -241,6 +218,84 @@ if (ext.loader == "neoforge") {
     }
 }
 
+if (ext.loader == "spigot" && getPluginManager().hasPlugin("xyz.jpenilla.run-paper")) {
+    tasks {
+        runServer {
+            minecraftVersion("${minecraft_version}")
+        }
+    }
+}
+
+
+// PROCESS RESOURCES
+
+
+processResources {
+    included_projects.forEach({
+        from("${project(it).projectDir}/src/main/resources")
+    })
+
+    if (loader == "fabric") {
+        filesMatching("fabric.mod.json") {
+            expand "mod_id": mod_id,
+                    "mod_version": "${mod_version}+${minecraft_version}",
+                    "mod_name": mod_name,
+                    "mod_description": mod_description,
+                    "license": license,
+                    "minecraft_version": minecraft_version
+        }
+    }
+
+    if (loader == "neoforge") {
+        filesMatching("META-INF/neoforge.mods.toml") {
+            expand  "mod_id"            : mod_id,
+                    "mod_version"       : mod_version,
+                    "mod_name"          : mod_name,
+                    "mod_description"   : mod_description,
+                    "license"           : license,
+                    "minecraft_version" : minecraft_version
+        }
+    }
+
+    if (loader == "spigot") {
+        filesMatching("plugin.yml") {
+            expand  "version"   : mod_version,
+                    "name"      : mod_name
+        }
+    }
+}
+
+tasks.register('deleteResources') {
+    project.delete "build/resources"
+}
+processResources.dependsOn deleteResources
+
+
+// SOURCE SETS
+
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = java_version
+
+    if (loader != "neoforge") {
+        included_projects.forEach({
+            source(project(it).sourceSets.main.allSource)
+        })
+    }
+}
+
+if (loader == "neoforge") {
+    tasks.withType(JavaCompile).matching(it -> !it.name.startsWith("neo")).configureEach {
+        included_projects.forEach({
+            source(project(it).sourceSets.main.allSource)
+        })
+    }
+}
+
+
+// METHODS
+
+
 def checkPlugin(String name) {
     if (!getPluginManager().hasPlugin(name)) {
         throw new RuntimeException("Missing plugin ${name}")
@@ -268,20 +323,20 @@ static def parseStringToList(String s) {
 }
 
 static String modIdToName(String id) {
-    boolean change = true
+    boolean isUpper = true
     String name = ""
     for (int i = 0; i < id.length(); i++) {
         if (Character.isLetter(id.charAt(i))) {
-            if (change) {
+            if (isUpper) {
                 name += Character.toUpperCase(id.charAt(i))
-                change = false
+                isUpper = false
             } else {
                 name += id.charAt(i)
             }
         } else {
             if (id.charAt(i) == '_') {
                 name += " "
-                change = true
+                isUpper = true
             } else {
                 name += id.charAt(i)
             }
