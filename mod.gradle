@@ -260,7 +260,7 @@ processResources {
     if (loader == "spigot") {
         filesMatching("plugin.yml") {
             expand  "version"   : mod_version,
-                    "name"      : mod_name
+                    "name"      : mod_id
         }
     }
 }
