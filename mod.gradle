@@ -117,12 +117,12 @@ repositories {
 
 dependencies {
     included_projects.forEach {
-        if (project(it).getConfigurations().findByName('namedElements') != null) {
-            implementation(project(path: it, configuration: "namedElements")) {
+        if (rootProject.project(it).configurations.names.contains('namedElements')) {
+            implementation(dependencies.project(path: it, configuration: "namedElements")) {
                 transitive false
             }
         } else {
-            implementation(project(it)) {
+            implementation(dependencies.project(it)) {
                 transitive false
             }
         }
